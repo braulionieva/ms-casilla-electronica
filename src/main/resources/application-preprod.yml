@@ -1,0 +1,28 @@
+server:
+    port: 8080
+    servlet:
+        context-path: /ms-casilla-electronica
+
+spring:
+    datasource:
+        url: ${DB_URL}
+        driver-class-name: oracle.jdbc.OracleDriver
+        username: ${DB_USERNAME}
+        password: ${DB_PASSWORD}
+
+    mail:
+        host: ${MAIL_HOST}
+        port: ${MAIL_PORT}
+        username: ${MAIL_USERNAME}
+        password: ${MAIL_PASSWORD}
+        properties:
+            mail:
+                smtp:
+                    auth: true
+                    starttls:
+                        enable: true
+
+app:
+    jwt:
+        secret: 6250655368566D597133743677397A244326452948404D635166546A576E5A72
+        expiration: 86400

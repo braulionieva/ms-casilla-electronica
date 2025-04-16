@@ -1,0 +1,144 @@
+# Variables globales para el pipeline
+variables:
+  # Imagen base para compilar con Gradle + JDK17
+  IMAGE_OPENJDK_GRADLE: gradle:7.3.3-jdk17-alpine
+  # Ajustar si requiere proxy dentro del contenedor de build
+  # http_proxy: "http://usuario:clave@proxy:8080"
+  # https_proxy: "http://usuario:clave@proxy:8080"
+  DOCKER_REGISTRY: "172.16.111.116:8083"
+  
+stages:
+  - cleanBuild
+  - buildPush
+  - deployQaSsl
+
+############################
+# 1) COMPILACIÓN / BUILD
+############################
+cleanBuild:
+  image: $IMAGE_OPENJDK_GRADLE
+  stage: cleanBuild
+  script:
+    - echo "Cleaning leftovers from previous builds and compiling the code..."
+    - chmod +x gradlew  # Asegura que gradlew sea ejecutable
+    - ./gradlew clean build -x test
+  artifacts:
+    paths:
+      - build/libs/*.jar
+
+############################
+# 2) BUILD + PUSH AL REGISTRO (NEXUS)
+############################
+buildPush:
+  stage: buildPush
+  # Si el Runner usa una imagen de Docker en Docker, o Docker host, ajustar aquí la configuración
+  script:
+    - echo "Building Docker image and pushing to Nexus..."
+    # Construimos la imagen con el Dockerfile
+    - docker build -f docker/Dockerfile -t cfms-casilla-electronica-bf-api .
+    # Login a Nexus
+    - docker login -u admin -p QAZwsxedc2020 $DOCKER_REGISTRY
+    # Etiquetamos la imagen para Nexus
+    - docker tag cfms-casilla-electronica-bf-api:latest $DOCKER_REGISTRY/cfms-casilla-electronica-bf-api:mpfn
+    # Empujamos la imagen
+    - docker push $DOCKER_REGISTRY/cfms-casilla-electronica-bf-api:mpfn
+
+############################
+# 3) DESPLIEGUE AL SERVIDOR DOCKER (172.16.112.9)
+############################
+deployQaSsl:
+  # Solo se despliega en la rama "uat" y si NO es Release "produccion"
+  only:
+    refs:
+      - qa-bf-ssl
+    variables:
+      - $RELEASE != "produccion"
+
+  stage: deployQaSsl
+
+  # Variables de entorno para la aplicación en modo dev
+  variables:
+    DB_URL: "jdbc:oracle:thin:@172.16.57.226:1521/desacfedb"
+    DB_USERNAME: "USRNOTBF"
+    DB_PASSWORD: 'QATEMPO062024'
+    MAIL_HOST: "172.16.2.4"
+    MAIL_PORT: "25"
+    MAIL_USERNAME: "carpetafiscalproductividad@gmail.com"
+    MAIL_PASSWORD: "pugvptxwzhjypzmc"
+    spring_profiles_active: "qa"
+  # Usamos Alpine para SSH u otro con SSH + bash instalados.
+  image: alpine:latest
+
+  before_script:
+    # Instalar paquetes necesarios (ssh, bash, etc.)
+    - apk update && apk add --no-cache bash openssh-client
+
+    # Crear carpeta .ssh
+    - mkdir -p ~/.ssh
+
+    # Insertar la llave privada almacenada en la variable SSH_PRIVATE_KEY_172_16_112_15
+    - echo "$SSH_PRIVATE_KEY_172_16_112_15" | tr -d '\r' > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+
+    # Deshabilitar la verificación de HostKey para no tener que teclear yes/no
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    - chmod 600 ~/.ssh/config
+
+    # Iniciar el agente SSH y añadimos la llave
+    - eval $(ssh-agent -s)
+    - ssh-add ~/.ssh/id_rsa
+
+  script:
+    # Mensaje...
+    - echo "Desplegando en 172.16.112.15 via SSH..."
+
+    # 1) Docker login (separado)
+    - ssh deploy@172.16.112.15 "bash -l -c '/usr/bin/docker login -u admin -p QAZwsxedc2020 172.16.111.116:8083'"
+
+    # 2) Docker pull de la imagen
+    - ssh deploy@172.16.112.15 "bash -l -c '/usr/bin/docker pull 172.16.111.116:8083/cfms-casilla-electronica-bf-api:mpfn'"
+
+    # 3) Detener contenedor (si está corriendo)
+    - ssh deploy@172.16.112.15 "bash -l -c '/usr/bin/docker stop cfms-casilla-electronica-bf-api || true'"
+
+    # 4) Eliminar contenedor (si existe)
+    #- ssh deploy@172.16.112.15 "bash -l -c '/usr/bin/docker rm cfms-casilla-electronica-bf-api || true'"
+    - |
+      for PORT in 2022; do
+        CONTAINER_NAME="cfms-casilla-electronica-bf-api-$PORT"
+        ssh deploy@172.16.112.15 "bash -l -c '/usr/bin/docker stop $CONTAINER_NAME || true'"
+        ssh deploy@172.16.112.15 "bash -l -c '/usr/bin/docker rm $CONTAINER_NAME || true'"
+      done
+
+    # - echo "Ejecutando el contenedor..."
+    # - >
+    #   ssh deploy@172.16.112.15 "bash -l -c '/usr/bin/docker run -d --name cfms-casilla-electronica-bf-api
+    #   --restart unless-stopped
+    #   -p 2021:8080
+    #   -e spring_profiles_active=\"$spring_profiles_active\"
+    #   -e CNT_UAT_DB_HOST=\"$CNT_UAT_DB_HOST\"
+    #   -e CNT_UAT_DB_NAME=\"$CNT_UAT_DB_NAME\"
+    #   -e CNT_UAT_DB_PASSWORD=\"$CNT_UAT_DB_PASSWORD\"
+    #   -e CNT_UAT_DB_USER=\"$CNT_UAT_DB_USER\"
+    #   -e JWT_TOKEN_KEY=\"$JWT_TOKEN_KEY\"
+    #   172.16.111.116:8083/cfms-casilla-electronica-bf-api:mpfn'"
+    - |
+      for PORT in 2022; do
+        CONTAINER_NAME="cfms-casilla-electronica-bf-api-$PORT"
+        echo "Ejecutando el contenedor $CONTAINER_NAME en el puerto $PORT..."
+        ssh deploy@172.16.112.15 "bash -l -c '/usr/bin/docker run -d --name $CONTAINER_NAME \
+          --restart unless-stopped \
+          --add-host apps-cfe-piloto.mpfn.gob.pe:172.16.112.15 \
+          --add-host cfms-generales-documentos-bf-gestion-api-qa.apps.ocp4.cfe.mpfn.gob.pe:172.16.111.231 \
+          -p $PORT:8080 \
+          -e spring_profiles_active=\"$spring_profiles_active\" \
+          -e DB_URL=\"$DB_URL\" \
+          -e DB_USERNAME=\"$DB_USERNAME\" \
+          -e DB_PASSWORD=\"$DB_PASSWORD\" \
+          -e MAIL_HOST=\"$MAIL_HOST\" \
+          -e MAIL_PORT=\"$MAIL_PORT\" \
+          -e MAIL_USERNAME=\"$MAIL_USERNAME\" \
+          -e MAIL_PASSWORD=\"$MAIL_PASSWORD\" \
+          172.16.111.116:8083/cfms-casilla-electronica-bf-api:mpfn'"
+      done
+

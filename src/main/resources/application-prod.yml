@@ -1,0 +1,37 @@
+server:
+    servlet:
+        context-path: /ms-casilla-electronica
+
+
+spring:
+    datasource:
+        url: jdbc:oracle:thin:@172.16.111.164:1521:MSTCFEDB
+        driver-class-name: oracle.jdbc.OracleDriver
+        username: USRNOTBF
+        password: USRn0tprod4
+    kafka:
+        producer:
+            bootstrap-servers: 172.16.111.115:9092
+            key-serializer: org.apache.kafka.common.serialization.IntegerSerializer
+            value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+            retries: 3
+        template:
+            default-topic: topic-cfms-generales-correo-gestion-bf
+
+
+reniec:
+    ip: 201.240.68.38
+app:
+    link_recuperar_cuenta: http://cfe.mpfn.gob.pe/security/sign-up/recuperar-cuenta
+    recuperar_cuenta: https://cfe.mpfn.gob.pe/casilla-fiscal-electronica/security/change-password?token=
+    jwt:
+        secret: 6250655368566D597133743677397A244326452948404D635166546A576E5A72
+        expiration: 86400
+endpoint:
+    reniec: http://cfe.mpfn.gob.pe/cfe/generales/persona/v1/e/personanatural/consulta/general
+    link_casilla: https://cfe.mpfn.gob.pe/casilla-fiscal-electronica
+    bandejaFiscal: https://cfe.mpfn.gob.pe/carpeta-fiscal-back/resources/integracion-generador/validarAbogado
+    generalesDocumentos: https://cfe.mpfn.gob.pe/cfe/generales/documento/v1/cftm/t/gestion/obtienedocumento
+    recaptcha:
+        secret_key: 6LeYCIcnAAAAACEfB0U_7fFPS8MYLhZEdstd1UbK
+        url: https://www.google.com/recaptcha/api/siteverify?secret=${endpoint.recaptcha.secret_key}

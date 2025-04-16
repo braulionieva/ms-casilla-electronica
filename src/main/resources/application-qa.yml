@@ -1,0 +1,41 @@
+server:
+    port: 8080
+    servlet:
+        context-path: /ms-casilla-electronica
+
+spring:
+    datasource:
+        url: ${DB_URL}
+        driver-class-name: oracle.jdbc.OracleDriver
+        username: ${DB_USERNAME}
+        password: ${DB_PASSWORD}
+    kafka:
+        producer:
+            bootstrap-servers: 172.16.111.115:9092
+            key-serializer: org.apache.kafka.common.serialization.IntegerSerializer
+            value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+            retries: 3
+        template:
+            default-topic: topic-cfms-generales-correo-gestion-qa-bf
+
+reniec:
+    ip: 201.240.68.38
+app:
+    link_recuperar_cuenta: http://apps-cfe-piloto.mpfn.gob.pe/security/sign-up/recuperar-cuenta
+    recuperar_cuenta: https://apps-cfe-piloto.mpfn.gob.pe/security/change-password?token=
+    jwt:
+        secret: 6250655368566D597133743677397A244326452948404D635166546A576E5A72
+        expiration: 86400
+
+endpoint:
+    #reniec: http://cfms-generales-persona-bf-cliente-api.qa.svc.cluster.local:8080/cfe/generales/persona/v1/e/personanatural/consulta/general
+    reniec: https://apps-cfe-piloto.mpfn.gob.pe/cfe/generales/persona/v1/e/personanatural/consulta/general
+    #reniec: http://cfe.mpfn.gob.pe/cfe/generales/persona/v1/e/personanatural/consulta/general
+    #link_casilla: ${URL_CASILLA:http://cfng-casilla-electronica-bf-qa.apps.ocp4.cfe.mpfn.gob.pe}
+    link_casilla: ${URL_CASILLA:https://apps-cfe-piloto.mpfn.gob.pe}
+    bandejaFiscal: http://172.16.111.112:8081/carpeta-fiscal-back/resources/integracion-generador/validarAbogado
+    #generalesDocumentos: http://cfms-generales-documentos-bf-gestion-api.qa.svc.cluster.local:8080/cfe/generales/documento/v1/cftm/t/gestion/obtienedocumento
+    generalesDocumentos: http://cfms-generales-documentos-bf-gestion-api-qa.apps.ocp4.cfe.mpfn.gob.pe/cfe/generales/documento/v1/cftm/t/gestion/obtienedocumento
+    recaptcha:
+        secret_key: 6LeYCIcnAAAAACEfB0U_7fFPS8MYLhZEdstd1UbK
+        url: https://www.google.com/recaptcha/api/siteverify?secret=${endpoint.recaptcha.secret_key}
